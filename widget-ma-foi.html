@@ -64,7 +64,7 @@
 <script>
 (function(){
   const P = new URLSearchParams(location.search);
-  const CITY = P.get('city') || 'Lyon';
+  const CITY = P.get('city'); // optionnel : force une ville, sinon géolocalisation automatique
   const COUNTRY = P.get('country') || 'France';
   const ADJ = P.get('adj') || '0'; // ajustement hijri ±1 si besoin de caler sur l'annonce locale
   const METHOD = P.get('method') || '3'; // 3 = MWL, adapté à l'Europe ; 12 = UOIF/Musulmans de France
@@ -89,10 +89,10 @@
   const dd=`${pad(today.getDate())}-${pad(today.getMonth()+1)}-${today.getFullYear()}`;
   const frDay=d=>d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'});
 
-  // ── Heures de prière ──
-  document.getElementById('cityLabel').textContent = 'Heures de prière · ' + CITY;
-  fetch(`https://api.aladhan.com/v1/timingsByCity/${dd}?city=${encodeURIComponent(CITY)}&country=${encodeURIComponent(COUNTRY)}&method=${METHOD}`)
-    .then(r=>r.json()).then(j=>{
+  // ── Heures de prière — géolocalisée : suit la cliente où qu'elle soit ──
+  function loadTimes(url,label){
+    document.getElementById('cityLabel').textContent = 'Heures de prière · ' + label;
+    fetch(url).then(r=>r.json()).then(j=>{
       const t=j.data.timings, list=document.getElementById('timesList');
       const nowMin = today.getHours()*60+today.getMinutes();
       let next=null;
@@ -112,6 +112,17 @@
         document.getElementById('nextIn').textContent=`dans ${h?h+' h ':''}${m} min · ${next.time}`;
       }
     }).catch(()=>{document.getElementById('timesList').innerHTML='<p class="err">Horaires indisponibles — réessaie en rechargeant la page.</p>'});
+  }
+  if(CITY){
+    loadTimes(`https://api.aladhan.com/v1/timingsByCity/${dd}?city=${encodeURIComponent(CITY)}&country=${encodeURIComponent(COUNTRY)}&method=${METHOD}`, CITY);
+  } else {
+    fetch('https://ipwho.is/').then(r=>r.json()).then(g=>{
+      if(!g || g.success===false) throw 0;
+      loadTimes(`https://api.aladhan.com/v1/timings/${dd}?latitude=${g.latitude}&longitude=${g.longitude}&method=${METHOD}`, g.city || 'ma position');
+    }).catch(()=>{
+      loadTimes(`https://api.aladhan.com/v1/timingsByCity/${dd}?city=Paris&country=France&method=${METHOD}`, 'Paris');
+    });
+  }
 
   // ── Hégirien + jours blancs ──
   fetch(`https://api.aladhan.com/v1/gToH/${dd}?adjustment=${ADJ}`)

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ruju' · Prière &amp; calendrier hégirien</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=Mulish:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{--bordeaux:#5C2024;--terracotta:#B36249;--argile:#C3A989;--ivory:#EFE7DA;--cream:#FBF7F0;--ink:#2B211A;--muted:#6B5D4F;--line:#E2D5BF}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:transparent;font-family:'Mulish',sans-serif;color:var(--ink);padding:6px;line-height:1.5}
+  .stack{display:flex;flex-direction:column;gap:10px;max-width:420px;margin:0 auto}
+  .card{background:var(--cream);border:1px solid var(--line);border-radius:4px;padding:14px 16px;box-shadow:0 2px 8px rgba(43,33,26,.05)}
+  .eyebrow{font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--terracotta);font-weight:700;margin-bottom:6px}
+  .next{background:linear-gradient(135deg,var(--bordeaux),var(--terracotta));color:#fff;border-radius:4px;padding:12px 14px;margin-bottom:10px}
+  .next .lab{font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;opacity:.85;font-weight:700}
+  .next .nm{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:600;line-height:1.15}
+  .next .in{font-size:12.5px;opacity:.92}
+  .pt{display:flex;justify-content:space-between;padding:5px 2px;font-size:13.5px;border-bottom:1px dashed #E7DBC6}
+  .pt:last-child{border-bottom:none}
+  .pt .h{font-weight:600;font-variant-numeric:tabular-nums}
+  .pt.past{color:#B3A48F}
+  .pt.now{color:var(--bordeaux);font-weight:700}
+  .hijri{font-family:'Cormorant Garamond',serif;font-size:21px;font-weight:600;color:var(--bordeaux);line-height:1.2}
+  .greg{font-size:11.5px;color:var(--muted)}
+  .month{margin-top:9px;background:#fff;border:1px solid var(--line);border-left:3px solid var(--bordeaux);border-radius:4px;padding:9px 12px;font-size:12.5px}
+  .month .t{font-weight:700;color:var(--bordeaux);font-size:13px}
+  .special{margin-top:9px;background:#F6EADF;border:1px solid #ECD7C4;border-radius:4px;padding:9px 12px;font-size:12.5px}
+  .special .t{font-weight:700;color:#9A5636}
+  .wd{display:flex;gap:6px;margin-top:8px}
+  .wd div{flex:1;text-align:center;background:#fff;border:1px solid var(--line);border-radius:4px;padding:7px 2px}
+  .wd .n{font-family:'Cormorant Garamond',serif;font-size:19px;font-weight:600;color:var(--bordeaux);line-height:1.1}
+  .wd .g{font-size:10px;color:var(--muted)}
+  .wd div.today{background:linear-gradient(135deg,var(--bordeaux),var(--terracotta));border-color:transparent}
+  .wd div.today .n,.wd div.today .g{color:#fff}
+  .foot{font-size:10.5px;color:var(--muted);font-style:italic;text-align:center;margin-top:2px}
+  .err{font-size:12px;color:var(--muted);font-style:italic;text-align:center;padding:10px}
+</style>
+</head>
+<body>
+<div class="stack">
+  <div class="card" id="prayerCard">
+    <p class="eyebrow" id="cityLabel">Heures de prière</p>
+    <div class="next" id="nextBox" style="display:none">
+      <p class="lab">Prochaine prière</p>
+      <p class="nm" id="nextName">—</p>
+      <p class="in" id="nextIn">—</p>
+    </div>
+    <div id="timesList"><p class="err">Chargement…</p></div>
+  </div>
+
+  <div class="card" id="hijriCard">
+    <p class="eyebrow">Calendrier hégirien</p>
+    <p class="hijri" id="hijriDate">—</p>
+    <p class="greg" id="gregDate"></p>
+    <div class="month" id="monthBox" style="display:none"></div>
+    <div class="special" id="specialBox" style="display:none"></div>
+    <p class="eyebrow" style="margin-top:12px">Jours blancs du mois</p>
+    <div class="wd" id="whiteDays"></div>
+    <p class="foot">Calendrier calculé (Umm al-Qura) — pour Ramadan et les Aïd, l'annonce fait foi.</p>
+  </div>
+</div>
+
+<script>
+(function(){
+  const P = new URLSearchParams(location.search);
+  const CITY = P.get('city') || 'Lyon';
+  const COUNTRY = P.get('country') || 'France';
+  const ADJ = P.get('adj') || '0'; // ajustement hijri ±1 si besoin de caler sur l'annonce locale
+  const METHOD = P.get('method') || '3'; // 3 = MWL, adapté à l'Europe ; 12 = UOIF/Musulmans de France
+  const NAMES = {Fajr:'Fajr', Dhuhr:'Dhuhr', Asr:'Asr', Maghrib:'Maghreb', Isha:'Isha'};
+  const ORDER = ['Fajr','Dhuhr','Asr','Maghrib','Isha'];
+  const MONTHS = {
+    1:{n:'Muharram',t:'🌙 Mois sacré',d:"Le « mois d'Allah » : les bonnes actions y pèsent plus lourd. Jeûne recommandé, surtout le 9 et le 10 (Achoura). Mois de trêve — on évite les conflits."},
+    2:{n:'Safar',t:'Mois ordinaire',d:"Aucune superstition n'y est attachée — le Prophète ﷺ a défait les croyances de mauvais augure sur ce mois."},
+    3:{n:'Rabi al-Awwal',t:'🌸 Mois de la naissance du Prophète ﷺ',d:"Un mois pour raviver l'amour du Messager : lire sa sîra, multiplier les salawat."},
+    4:{n:'Rabi ath-Thani',t:'Mois ordinaire',d:"La constance dans les petites choses vaut mieux que l'intensité passagère."},
+    5:{n:'Joumada al-Oula',t:'Mois ordinaire',d:"Un bon mois pour ancrer une routine d'adoration discrète."},
+    6:{n:'Joumada ath-Thania',t:'Mois ordinaire',d:"Continuité. Les actes les plus aimés d'Allah sont les plus réguliers, même petits."},
+    7:{n:'Rajab',t:'🌙 Mois sacré',d:"Un des quatre mois sacrés — la saison des semailles avant Ramadan. Istighfar et premiers jeûnes de préparation."},
+    8:{n:'Chaabane',t:'🌗 L\'antichambre de Ramadan',d:"Le Prophète ﷺ y jeûnait plus que tout autre mois hors Ramadan. On prépare le corps et le cœur."},
+    9:{n:'Ramadan',t:'✨ Le mois du Coran',d:"Jeûne obligatoire, tarawih, générosité. Les 10 dernières nuits : Laylat al-Qadr, meilleure que mille mois."},
+    10:{n:'Chawwal',t:'🌱 Le mois des 6 jours',d:"6 jours de jeûne après l'Aïd = la récompense d'une année entière."},
+    11:{n:'Dhul-Qi\'da',t:'🌙 Mois sacré',d:"Mois de trêve. Un temps pour la paix — autour de soi et en soi."},
+    12:{n:'Dhul-Hijja',t:'🌙 Mois sacré · pèlerinage',d:"Les 10 premiers jours : les meilleurs jours de l'année. Jeûne d'Arafat (le 9) : expie deux années."}
+  };
+  const pad=n=>String(n).padStart(2,'0');
+  const today=new Date();
+  const dd=`${pad(today.getDate())}-${pad(today.getMonth()+1)}-${today.getFullYear()}`;
+  const frDay=d=>d.toLocaleDateString('fr-FR',{weekday:'short',day:'numeric',month:'short'});
+
+  // ── Heures de prière ──
+  document.getElementById('cityLabel').textContent = 'Heures de prière · ' + CITY;
+  fetch(`https://api.aladhan.com/v1/timingsByCity/${dd}?city=${encodeURIComponent(CITY)}&country=${encodeURIComponent(COUNTRY)}&method=${METHOD}`)
+    .then(r=>r.json()).then(j=>{
+      const t=j.data.timings, list=document.getElementById('timesList');
+      const nowMin = today.getHours()*60+today.getMinutes();
+      let next=null;
+      list.innerHTML='';
+      ORDER.forEach(k=>{
+        const [h,m]=t[k].split(':').map(Number); const mins=h*60+m;
+        const row=document.createElement('div'); row.className='pt';
+        if(mins<nowMin) row.classList.add('past');
+        else if(!next){ next={name:NAMES[k],mins,time:t[k]}; row.classList.add('now'); }
+        row.innerHTML=`<span>${NAMES[k]}</span><span class="h">${t[k]}</span>`;
+        list.appendChild(row);
+      });
+      if(next){
+        const diff=next.mins-nowMin, h=Math.floor(diff/60), m=diff%60;
+        document.getElementById('nextBox').style.display='block';
+        document.getElementById('nextName').textContent=next.name;
+        document.getElementById('nextIn').textContent=`dans ${h?h+' h ':''}${m} min · ${next.time}`;
+      }
+    }).catch(()=>{document.getElementById('timesList').innerHTML='<p class="err">Horaires indisponibles — réessaie en rechargeant la page.</p>'});
+
+  // ── Hégirien + jours blancs ──
+  fetch(`https://api.aladhan.com/v1/gToH/${dd}?adjustment=${ADJ}`)
+    .then(r=>r.json()).then(j=>{
+      const h=j.data.hijri;
+      const hd=parseInt(h.day), hm=h.month.number, hy=h.year;
+      const M=MONTHS[hm]||{n:h.month.en,t:'',d:''};
+      document.getElementById('hijriDate').textContent=`${hd} ${M.n} ${hy}`;
+      document.getElementById('gregDate').textContent=today.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+      const mb=document.getElementById('monthBox');
+      mb.style.display='block';
+      mb.innerHTML=`<p class="t">${M.t} — ${M.n}</p><p>${M.d}</p>`;
+
+      // Jours blancs : 13-14-15 du mois hijri en cours
+      const wdBox=document.getElementById('whiteDays');
+      [13,14,15].forEach(d=>{
+        const g=new Date(today); g.setDate(today.getDate()+(d-hd));
+        const cell=document.createElement('div');
+        if(d===hd) cell.classList.add('today');
+        cell.innerHTML=`<p class="n">${d}</p><p class="g">${d-hd<0?'passé · ':''}${frDay(g)}</p>`;
+        wdBox.appendChild(cell);
+      });
+
+      // Jour particulier → préconisation douce
+      const sp=document.getElementById('specialBox');
+      const dow=today.getDay(); // 1 = lundi, 4 = jeudi
+      let msg=null;
+      if(hm===1&&(hd===9||hd===10)) msg=['Achoura','Jeûne recommandé aujourd\'hui — il expie l\'année écoulée (Muslim). Si tu peux, joins le 9 ou le 11.'];
+      else if(hm===12&&hd===9) msg=['Jour de Arafat','Jeûne recommandé — il expie l\'année écoulée et l\'année à venir.'];
+      else if(hd>=13&&hd<=15) msg=['Jour blanc','Jeûne recommandé aujourd\'hui — trois jours par mois lunaire, « comme jeûner toute l\'année ». Un seul, c\'est déjà un.'];
+      else if(dow===1||dow===4) msg=['Lundi / jeudi','Jour où les actes sont présentés — le Prophète ﷺ aimait qu\'ils le trouvent en état de jeûne. Si ton énergie le permet.'];
+      if(msg){ sp.style.display='block'; sp.innerHTML=`<p class="t">🤍 ${msg[0]}</p><p>${msg[1]}</p>`; }
+    }).catch(()=>{document.getElementById('hijriDate').textContent='Calendrier indisponible';});
+})();
+</script>
+</body>
+</html>
